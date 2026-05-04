@@ -1,0 +1,41 @@
+{
+	"name": "@op1/goals",
+	"version": "0.1.0",
+	"description": "Goal tracking plugin for OpenCode with slash commands, model tools, and guarded continuation",
+	"type": "module",
+	"main": "dist/goals.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/goals.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "bun build src/index.tsx --outfile dist/goals.js --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/plugin/tui --external @opentui/solid --external solid-js --external zod && tsc --emitDeclarationOnly --declaration --declarationMap false --outDir dist",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test",
+		"dev": "bun run build --watch"
+	},
+	"files": ["dist"],
+	"dependencies": {
+		"@opencode-ai/plugin": "^1.0.0",
+		"solid-js": "^1.9.0",
+		"zod": "4.1.8"
+	},
+	"devDependencies": {
+		"@opentui/core": "0.2.2",
+		"@opentui/solid": "0.2.2",
+		"@types/bun": "^1.1.0",
+		"typescript": "^5.7.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/opzero1/goals.git"
+	},
+	"license": "MIT",
+	"keywords": ["opencode", "plugin", "goals", "continuation"]
+}

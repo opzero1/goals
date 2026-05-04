@@ -1,0 +1,24 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ESNext"],
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": false,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"jsx": "preserve",
+		"jsxImportSource": "@opentui/solid",
+		"rootDir": "src",
+		"outDir": "dist"
+	},
+	"include": ["src/**/*"],
+	"exclude": ["src/__tests__/**/*", "dist", "node_modules"]
+}
