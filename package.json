@@ -12,7 +12,7 @@
 		}
 	},
 	"scripts": {
-		"build": "bun build src/index.tsx --outfile dist/goals.js --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/plugin/tui --external @opentui/solid --external solid-js --external zod && tsc --emitDeclarationOnly --declaration --declarationMap false --outDir dist",
+		"build": "bun run scripts/build.mjs && tsc --emitDeclarationOnly --declaration --declarationMap false --outDir dist",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test",
 		"dev": "bun run build --watch"

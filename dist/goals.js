@@ -480,52 +480,83 @@ function GoalsServerPlugin(options = {}) {
 }
 
 // src/tui.tsx
+import { setProp as _$setProp } from "@opentui/solid";
+import { effect as _$effect } from "@opentui/solid";
+import { insert as _$insert } from "@opentui/solid";
+import { memo as _$memo } from "@opentui/solid";
+import { createElement as _$createElement } from "@opentui/solid";
+import { createComponent as _$createComponent } from "@opentui/solid";
 import { createSignal, Show } from "solid-js";
-import { jsxDEV } from "@opentui/solid/jsx-dev-runtime";
 function getSessionID(api) {
   const sessionID = api.route.current.name === "session" ? api.route.current.params?.sessionID : undefined;
   return typeof sessionID === "string" ? sessionID : undefined;
 }
 async function showGoal(api, root, sessionID) {
   const goal = await readGoal(root, sessionID);
-  api.ui.toast({ message: goal ? formatGoalSummary(goal) : "No goal is currently set. Usage: /goal <objective>", variant: "info" });
+  api.ui.toast({
+    message: goal ? formatGoalSummary(goal) : "No goal is currently set. Usage: /goal <objective>",
+    variant: "info"
+  });
 }
 async function setGoal(api, root, sessionID, objective, tokenBudget) {
   const error = validateObjective(objective);
   if (error) {
-    api.ui.toast({ message: error, variant: "error" });
+    api.ui.toast({
+      message: error,
+      variant: "error"
+    });
     return;
   }
   const existing = await readGoal(root, sessionID);
   if (existing && existing.status !== "complete") {
-    api.ui.dialog.replace(() => /* @__PURE__ */ jsxDEV(api.ui.DialogConfirm, {
+    api.ui.dialog.replace(() => _$createComponent(api.ui.DialogConfirm, {
       title: "Replace goal?",
       message: `New objective: ${objective}`,
       onConfirm: async () => {
         api.ui.dialog.clear();
-        await replaceGoal(root, { sessionID, objective, tokenBudget });
-        api.ui.toast({ message: "Goal replaced", variant: "success" });
+        await replaceGoal(root, {
+          sessionID,
+          objective,
+          tokenBudget
+        });
+        api.ui.toast({
+          message: "Goal replaced",
+          variant: "success"
+        });
       }
-    }, undefined, false, undefined, this));
+    }));
     return;
   }
-  await createGoal(root, { sessionID, objective, tokenBudget });
-  api.ui.toast({ message: "Goal set", variant: "success" });
+  await createGoal(root, {
+    sessionID,
+    objective,
+    tokenBudget
+  });
+  api.ui.toast({
+    message: "Goal set",
+    variant: "success"
+  });
 }
 async function editGoal(api, root, sessionID) {
   const goal = await readGoal(root, sessionID);
   if (!goal) {
-    api.ui.toast({ message: "No goal to edit", variant: "info" });
+    api.ui.toast({
+      message: "No goal to edit",
+      variant: "info"
+    });
     return;
   }
-  api.ui.dialog.replace(() => /* @__PURE__ */ jsxDEV(api.ui.DialogPrompt, {
+  api.ui.dialog.replace(() => _$createComponent(api.ui.DialogPrompt, {
     title: "Edit goal",
     placeholder: "Type a goal objective and press Enter",
     onConfirm: async (value) => {
       api.ui.dialog.clear();
       const error = validateObjective(value);
       if (error) {
-        api.ui.toast({ message: error, variant: "error" });
+        api.ui.toast({
+          message: error,
+          variant: "error"
+        });
         return;
       }
       await updateGoalObjective(root, {
@@ -534,14 +565,20 @@ async function editGoal(api, root, sessionID) {
         status: goal.status === "budget_limited" || goal.status === "complete" ? "active" : goal.status,
         tokenBudget: goal.tokenBudget
       });
-      api.ui.toast({ message: "Goal updated", variant: "success" });
+      api.ui.toast({
+        message: "Goal updated",
+        variant: "success"
+      });
     }
-  }, undefined, false, undefined, this));
+  }));
 }
 async function runGoalCommand(api, root, args) {
   const sessionID = getSessionID(api);
   if (!sessionID) {
-    api.ui.toast({ message: "Start or select a session before using /goal.", variant: "error" });
+    api.ui.toast({
+      message: "Start or select a session before using /goal.",
+      variant: "error"
+    });
     return;
   }
   const command = parseGoalCommand(args);
@@ -554,69 +591,89 @@ async function runGoalCommand(api, root, args) {
   if (command.action === "pause") {
     const goal = await updateGoalStatus(root, sessionID, "paused");
     if (!goal) {
-      api.ui.toast({ message: "No goal to pause", variant: "info" });
+      api.ui.toast({
+        message: "No goal to pause",
+        variant: "info"
+      });
       return;
     }
-    api.ui.toast({ message: "Goal paused", variant: "info" });
+    api.ui.toast({
+      message: "Goal paused",
+      variant: "info"
+    });
     return;
   }
   if (command.action === "resume") {
     const goal = await updateGoalStatus(root, sessionID, "active");
     if (!goal) {
-      api.ui.toast({ message: "No goal to resume", variant: "info" });
+      api.ui.toast({
+        message: "No goal to resume",
+        variant: "info"
+      });
       return;
     }
-    api.ui.toast({ message: "Goal resumed", variant: "success" });
+    api.ui.toast({
+      message: "Goal resumed",
+      variant: "success"
+    });
     return;
   }
   if (await deleteGoal(root, sessionID))
-    api.ui.toast({ message: "Goal cleared", variant: "info" });
+    api.ui.toast({
+      message: "Goal cleared",
+      variant: "info"
+    });
   else
-    api.ui.toast({ message: "No goal to clear", variant: "info" });
+    api.ui.toast({
+      message: "No goal to clear",
+      variant: "info"
+    });
 }
 function GoalPromptStatus(props) {
   const goal = props.goal();
-  return /* @__PURE__ */ jsxDEV(Show, {
+  return _$createComponent(Show, {
     when: goal,
-    children: /* @__PURE__ */ jsxDEV("text", {
-      fg: props.api.theme.current.textMuted,
-      children: goal ? formatGoalStatus(goal) : ""
-    }, undefined, false, undefined, this)
-  }, undefined, false, undefined, this);
+    get children() {
+      var _el$ = _$createElement("text");
+      _$insert(_el$, () => goal ? formatGoalStatus(goal) : "");
+      _$effect((_$p) => _$setProp(_el$, "fg", props.api.theme.current.textMuted, _$p));
+      return _el$;
+    }
+  });
 }
 async function installGoalsPlugin(api) {
   const root = api.state.path.directory || process.cwd();
   const [goal, setGoalState] = createSignal();
   const refresh = async (sessionID) => setGoalState(sessionID ? await readGoal(root, sessionID) : undefined);
-  api.command.register(() => [
-    {
-      title: "Goal",
-      value: "goal",
-      description: "Set or view the goal for a long-running task",
-      category: "Goals",
-      slash: { name: "goal" },
-      onSelect: () => {
-        api.ui.dialog.replace(() => /* @__PURE__ */ jsxDEV(api.ui.DialogPrompt, {
-          title: "Goal",
-          placeholder: "improve benchmark coverage",
-          onConfirm: async (value) => {
-            api.ui.dialog.clear();
-            await runGoalCommand(api, root, value);
-            await refresh(getSessionID(api));
-          }
-        }, undefined, false, undefined, this));
-      }
+  api.command.register(() => [{
+    title: "Goal",
+    value: "goal",
+    description: "Set or view the goal for a long-running task",
+    category: "Goals",
+    slash: {
+      name: "goal"
+    },
+    onSelect: () => {
+      api.ui.dialog.replace(() => _$createComponent(api.ui.DialogPrompt, {
+        title: "Goal",
+        placeholder: "improve benchmark coverage",
+        onConfirm: async (value) => {
+          api.ui.dialog.clear();
+          await runGoalCommand(api, root, value);
+          await refresh(getSessionID(api));
+        }
+      }));
     }
-  ]);
+  }]);
   api.slots.register({
     order: 50,
     slots: {
       session_prompt_right(_, props) {
         refresh(props.session_id);
-        return /* @__PURE__ */ jsxDEV(GoalPromptStatus, {
+        return _$createComponent(GoalPromptStatus, {
           api,
           goal
-        }, undefined, false, undefined, this);
+        });
       }
     }
   });
