@@ -630,22 +630,37 @@ async function runGoalCommand(api, root, args, activeSessionID) {
     });
 }
 function GoalPromptStatus(props) {
-  const goal = props.goal();
   return _$createComponent(Show, {
-    when: goal,
+    get when() {
+      return props.goal();
+    },
     get children() {
       var _el$ = _$createElement("text");
-      _$insert(_el$, () => goal ? formatGoalStatus(goal) : "");
+      _$insert(_el$, (() => {
+        var _c$ = _$memo(() => !!props.goal());
+        return () => _c$() ? formatGoalStatus(props.goal()) : "";
+      })());
       _$effect((_$p) => _$setProp(_el$, "fg", props.api.theme.current.textMuted, _$p));
       return _el$;
     }
   });
+}
+function readSessionID2(properties) {
+  const record = properties && typeof properties === "object" ? properties : undefined;
+  const sessionID = record?.sessionID ?? record?.sessionId ?? record?.session_id;
+  return typeof sessionID === "string" ? sessionID : undefined;
 }
 async function installGoalsPlugin(api) {
   const root = api.state.path.directory || process.cwd();
   const [goal, setGoalState] = createSignal();
   let activeSessionID;
   const refresh = async (sessionID) => setGoalState(sessionID ? await readGoal(root, sessionID) : undefined);
+  const setActiveSession = (sessionID) => {
+    if (!sessionID)
+      return;
+    activeSessionID = sessionID;
+    refresh(sessionID);
+  };
   api.command.register(() => [{
     title: "Goal",
     value: "goal",
@@ -671,8 +686,7 @@ async function installGoalsPlugin(api) {
     order: 50,
     slots: {
       session_prompt_right(_, props) {
-        activeSessionID = props.session_id;
-        refresh(props.session_id);
+        setActiveSession(props.session_id);
         return _$createComponent(GoalPromptStatus, {
           api,
           goal
@@ -680,9 +694,11 @@ async function installGoalsPlugin(api) {
       }
     }
   });
+  api.event.on("tui.session.select", (event) => setActiveSession(event.properties.sessionID));
+  api.event.on("session.created", (event) => setActiveSession(event.properties.sessionID));
+  api.event.on("session.updated", (event) => setActiveSession(event.properties.sessionID));
   api.event.on("session.status", (event) => {
-    const sessionID = event.properties.sessionID ?? event.properties.sessionId;
-    refresh(sessionID);
+    setActiveSession(readSessionID2(event.properties));
   });
 }
 
