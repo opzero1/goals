@@ -684,18 +684,19 @@ async function installGoalsPlugin(api) {
 }
 
 // src/index.tsx
-var GoalsPlugin = Object.assign(GoalsServerPlugin(), {
-  id: "@op1/goals",
-  async tui(api) {
-    await installGoalsPlugin(api);
-  }
-});
-var src_default = GoalsPlugin;
+var id = "@op1/goals";
+var server = GoalsServerPlugin();
+async function tui(api) {
+  await installGoalsPlugin(api);
+}
+var src_default = server;
 export {
+  tui,
+  server,
   parseTokenBudget,
   parseGoalCommand,
   installGoalsPlugin,
+  id,
   src_default as default,
-  GoalsServerPlugin,
-  GoalsPlugin
+  GoalsServerPlugin
 };

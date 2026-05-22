@@ -21,3 +21,11 @@ if (!output) {
 
 await Bun.$`mkdir -p dist`;
 await Bun.write("dist/goals.js", output);
+await Bun.write(
+	"dist/server.js",
+	`import { server } from "./goals.js";\n\nexport const GoalsPlugin = server;\n`,
+);
+await Bun.write(
+	"dist/tui.js",
+	`import { id, tui } from "./goals.js";\n\nexport default { id, tui };\n`,
+);
