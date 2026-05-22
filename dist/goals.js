@@ -487,7 +487,7 @@ import { memo as _$memo } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
 import { createComponent as _$createComponent } from "@opentui/solid";
 import { createSignal, Show } from "solid-js";
-function getSessionID(api) {
+function getRouteSessionID(api) {
   const sessionID = api.route.current.name === "session" ? api.route.current.params?.sessionID : undefined;
   return typeof sessionID === "string" ? sessionID : undefined;
 }
@@ -572,8 +572,8 @@ async function editGoal(api, root, sessionID) {
     }
   }));
 }
-async function runGoalCommand(api, root, args) {
-  const sessionID = getSessionID(api);
+async function runGoalCommand(api, root, args, activeSessionID) {
+  const sessionID = getRouteSessionID(api) ?? activeSessionID;
   if (!sessionID) {
     api.ui.toast({
       message: "Start or select a session before using /goal.",
@@ -644,6 +644,7 @@ function GoalPromptStatus(props) {
 async function installGoalsPlugin(api) {
   const root = api.state.path.directory || process.cwd();
   const [goal, setGoalState] = createSignal();
+  let activeSessionID;
   const refresh = async (sessionID) => setGoalState(sessionID ? await readGoal(root, sessionID) : undefined);
   api.command.register(() => [{
     title: "Goal",
@@ -654,13 +655,14 @@ async function installGoalsPlugin(api) {
       name: "goal"
     },
     onSelect: () => {
+      const commandSessionID = getRouteSessionID(api) ?? activeSessionID;
       api.ui.dialog.replace(() => _$createComponent(api.ui.DialogPrompt, {
         title: "Goal",
         placeholder: "improve benchmark coverage",
         onConfirm: async (value) => {
           api.ui.dialog.clear();
-          await runGoalCommand(api, root, value);
-          await refresh(getSessionID(api));
+          await runGoalCommand(api, root, value, commandSessionID);
+          await refresh(commandSessionID);
         }
       }));
     }
@@ -669,6 +671,7 @@ async function installGoalsPlugin(api) {
     order: 50,
     slots: {
       session_prompt_right(_, props) {
+        activeSessionID = props.session_id;
         refresh(props.session_id);
         return _$createComponent(GoalPromptStatus, {
           api,

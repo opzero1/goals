@@ -6,7 +6,7 @@ import { formatGoalStatus, formatGoalSummary } from "./prompts.js";
 import { createGoal, deleteGoal, readGoal, replaceGoal, updateGoalObjective, updateGoalStatus } from "./store.js";
 import type { GoalState } from "./types.js";
 
-function getSessionID(api: TuiPluginApi): string | undefined {
+function getRouteSessionID(api: TuiPluginApi): string | undefined {
 	const sessionID = api.route.current.name === "session" ? api.route.current.params?.sessionID : undefined;
 	return typeof sessionID === "string" ? sessionID : undefined;
 }
@@ -70,8 +70,8 @@ async function editGoal(api: TuiPluginApi, root: string, sessionID: string) {
 	));
 }
 
-async function runGoalCommand(api: TuiPluginApi, root: string, args: string) {
-	const sessionID = getSessionID(api);
+async function runGoalCommand(api: TuiPluginApi, root: string, args: string, activeSessionID?: string) {
+	const sessionID = getRouteSessionID(api) ?? activeSessionID;
 	if (!sessionID) {
 		api.ui.toast({ message: "Start or select a session before using /goal.", variant: "error" });
 		return;
@@ -114,6 +114,7 @@ function GoalPromptStatus(props: { goal: Accessor<GoalState | undefined>; api: T
 export async function installGoalsPlugin(api: TuiPluginApi): Promise<void> {
 	const root = api.state.path.directory || process.cwd();
 	const [goal, setGoalState] = createSignal<GoalState | undefined>();
+	let activeSessionID: string | undefined;
 	const refresh = async (sessionID?: string) => setGoalState(sessionID ? await readGoal(root, sessionID) : undefined);
 
 	api.command.register(() => [
@@ -124,14 +125,15 @@ export async function installGoalsPlugin(api: TuiPluginApi): Promise<void> {
 			category: "Goals",
 			slash: { name: "goal" },
 			onSelect: () => {
+				const commandSessionID = getRouteSessionID(api) ?? activeSessionID;
 				api.ui.dialog.replace(() => (
 					<api.ui.DialogPrompt
 						title="Goal"
 						placeholder="improve benchmark coverage"
 						onConfirm={async (value) => {
 							api.ui.dialog.clear();
-							await runGoalCommand(api, root, value);
-							await refresh(getSessionID(api));
+							await runGoalCommand(api, root, value, commandSessionID);
+							await refresh(commandSessionID);
 						}}
 					/>
 				));
@@ -143,6 +145,7 @@ export async function installGoalsPlugin(api: TuiPluginApi): Promise<void> {
 		order: 50,
 		slots: {
 			session_prompt_right(_, props) {
+				activeSessionID = props.session_id;
 				void refresh(props.session_id);
 				return <GoalPromptStatus api={api} goal={goal} />;
 			},
