@@ -12,8 +12,8 @@ Long-running goal support for OpenCode.
 - `get_goal`, `create_goal`, and `update_goal` model tools
 - Project-local persistence in `.opencode/goals/<sessionID>.json`
 - Token budget accounting from OpenCode step events
-- Guarded continuation prompts that require evidence before marking a goal complete or blocked
-- Codex-style stopped states: `paused`, `blocked`, `usage_limited`, `budget_limited`, and `complete`
+- Guarded continuation prompts that require evidence before marking a goal complete
+- Codex-style states: `active`, `paused`, `budget_limited`, and `complete`
 
 ## Install
 
@@ -57,7 +57,9 @@ The model can also create a goal with an explicit token budget through `create_g
 
 Active goals are injected into the model context as untrusted user-provided objective data. When a turn finishes and the session becomes idle, the plugin can send a continuation prompt so work continues toward the same objective. If a token budget is reached, the goal is marked `budget_limited` and the next prompt asks the model to wrap up rather than start new substantive work.
 
-The model can only mark a goal `complete` through `update_goal` after auditing that the objective is actually achieved. It can mark a goal `blocked` only after the same blocking condition repeats for at least three consecutive goal turns and no meaningful progress is possible without user input or an external change.
+OpenCode's local continuation cap uses Codex's existing `paused` state so a capped goal is visible and can be resumed with `/goal resume`.
+
+The model can only mark a goal `complete` through `update_goal` after auditing that the objective is actually achieved. Pause, resume, and budget-limited status changes are controlled by the user or system.
 
 ## Development
 

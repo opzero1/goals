@@ -3,10 +3,16 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { GoalState, GoalStatus, StepUsage } from "./types.js";
 
-const GOAL_STATUSES = new Set<GoalStatus>(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"]);
+const GOAL_STATUSES = new Set<GoalStatus>(["active", "paused", "budget_limited", "complete"]);
 
 function isGoalStatus(value: unknown): value is GoalStatus {
 	return typeof value === "string" && GOAL_STATUSES.has(value as GoalStatus);
+}
+
+function normalizeStatus(value: unknown): GoalStatus {
+	if (isGoalStatus(value)) return value;
+	if (value === "blocked" || value === "usage_limited") return "paused";
+	return "active";
 }
 
 function normalizeGoal(raw: unknown): GoalState {
@@ -16,7 +22,7 @@ function normalizeGoal(raw: unknown): GoalState {
 		sessionID: typeof value.sessionID === "string" ? value.sessionID : "",
 		goalID: typeof value.goalID === "string" ? value.goalID : typeof value.goalId === "string" ? value.goalId : randomUUID(),
 		objective: typeof value.objective === "string" ? value.objective : "",
-		status: isGoalStatus(value.status) ? value.status : "active",
+		status: normalizeStatus(value.status),
 		tokenBudget: typeof value.tokenBudget === "number" && Number.isFinite(value.tokenBudget) ? value.tokenBudget : undefined,
 		tokensUsed: typeof value.tokensUsed === "number" && Number.isFinite(value.tokensUsed) ? value.tokensUsed : 0,
 		timeUsedSeconds: typeof value.timeUsedSeconds === "number" && Number.isFinite(value.timeUsedSeconds) ? value.timeUsedSeconds : 0,
@@ -96,11 +102,11 @@ export async function updateGoalObjective(root: string, input: { sessionID: stri
 export async function updateGoalStatus(root: string, sessionID: string, status: GoalStatus): Promise<GoalState | undefined> {
 	const goal = await readGoal(root, sessionID);
 	if (!goal) return undefined;
-	const resumingStoppedGoal = (goal.status === "blocked" || goal.status === "usage_limited") && status === "active";
+	const resumingPausedGoal = goal.status === "paused" && status === "active";
 	return writeGoal(root, {
 		...goal,
 		status,
-		continuationsUsed: resumingStoppedGoal ? 0 : goal.continuationsUsed,
+		continuationsUsed: resumingPausedGoal ? 0 : goal.continuationsUsed,
 		budgetWrapPrompted: status === "active" ? false : goal.budgetWrapPrompted,
 		lastTurnStartedAt: status === "active" ? goal.lastTurnStartedAt : undefined,
 		lastTurnGoalID: status === "active" ? goal.lastTurnGoalID : undefined,

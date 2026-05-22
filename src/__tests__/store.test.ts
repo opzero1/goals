@@ -36,19 +36,15 @@ describe("goal store", () => {
 		expect(goal?.status).toBe("active");
 	});
 
-	test("supports stopped statuses from Codex goal lifecycle", async () => {
+	test("supports Codex goal lifecycle statuses", async () => {
 		const root = await tempRoot();
 		await createGoal(root, { sessionID: "s1", objective: "ship goals" });
-		expect((await updateGoalStatus(root, "s1", "blocked"))?.status).toBe("blocked");
 		await recordContinuation(root, "s1");
-		const resumedBlocked = await updateGoalStatus(root, "s1", "active");
-		expect(resumedBlocked?.status).toBe("active");
-		expect(resumedBlocked?.continuationsUsed).toBe(0);
-		await recordContinuation(root, "s1");
-		expect((await updateGoalStatus(root, "s1", "usage_limited"))?.status).toBe("usage_limited");
+		expect((await updateGoalStatus(root, "s1", "paused"))?.status).toBe("paused");
 		const resumed = await updateGoalStatus(root, "s1", "active");
 		expect(resumed?.status).toBe("active");
 		expect(resumed?.continuationsUsed).toBe(0);
+		expect((await updateGoalStatus(root, "s1", "complete"))?.status).toBe("complete");
 	});
 
 	test("records continuation counts", async () => {

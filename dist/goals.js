@@ -66,7 +66,7 @@ function buildGoalSystemPrompt(goal) {
     `Time used: ${goal.timeUsedSeconds}s`,
     ...budgetLines(goal),
     "Before marking the goal complete, audit whether the objective is actually achieved.",
-    "Use update_goal with status complete only when the objective is achieved, or status blocked only when the strict blocked audit is satisfied."
+    "Use update_goal with status complete only when the objective is achieved."
   ].join(`
 `);
 }
@@ -111,15 +111,7 @@ function buildContinuationPrompt(goal) {
     "",
     'Do not rely on intent, partial progress, memory of earlier work, or a plausible final answer as proof of completion. Marking the goal complete is a claim that the full objective has been finished and can withstand requirement-by-requirement scrutiny. Only mark the goal achieved when current evidence proves every requirement has been satisfied and no required work remains. If the evidence is incomplete, weak, indirect, merely consistent with completion, or leaves any requirement missing, incomplete, or unverified, keep working instead of marking the goal complete. If the objective is achieved, call update_goal with status "complete" so usage accounting is preserved. If the achieved goal has a token budget, report the final consumed token budget to the user after update_goal succeeds.',
     "",
-    "Blocked audit:",
-    '- Do not call update_goal with status "blocked" the first time a blocker appears.',
-    '- Only use status "blocked" when the same blocking condition has repeated for at least three consecutive goal turns, counting the original/user-triggered turn and any automatic goal continuations.',
-    '- If the user resumes a goal that was previously marked "blocked", treat the resumed run as a fresh blocked audit. If the same blocking condition then repeats for at least three consecutive resumed goal turns, call update_goal with status "blocked" again.',
-    '- Use status "blocked" only when you are truly at an impasse and cannot make meaningful progress without user input or an external-state change.',
-    '- Once the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal active; call update_goal with status "blocked".',
-    '- Never use status "blocked" merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification.',
-    "",
-    "Do not call update_goal unless the goal is complete or the strict blocked audit above is satisfied. Do not mark a goal complete merely because the budget is nearly exhausted or because you are stopping work."
+    "Do not call update_goal unless the goal is complete. Do not mark a goal complete merely because the budget is nearly exhausted or because you are stopping work."
   ].join(`
 `);
 }
@@ -168,7 +160,7 @@ function formatGoalSummary(goal) {
     lines.push(`Token budget: ${goal.tokenBudget}`);
   if (goal.status === "active")
     lines.push("", "Commands: /goal edit, /goal pause, /goal clear");
-  else if (goal.status === "paused" || goal.status === "blocked" || goal.status === "usage_limited")
+  else if (goal.status === "paused")
     lines.push("", "Commands: /goal edit, /goal resume, /goal clear");
   else
     lines.push("", "Commands: /goal edit, /goal clear");
@@ -178,10 +170,6 @@ function formatGoalSummary(goal) {
 function formatGoalStatus(goal) {
   if (goal.status === "paused")
     return "Goal paused";
-  if (goal.status === "blocked")
-    return "Goal blocked";
-  if (goal.status === "usage_limited")
-    return "Goal usage limited";
   if (goal.status === "budget_limited")
     return "Goal budget limited";
   if (goal.status === "complete")
@@ -191,8 +179,6 @@ function formatGoalStatus(goal) {
 function goalStatusLabel(status) {
   if (status === "budget_limited")
     return "limited by budget";
-  if (status === "usage_limited")
-    return "usage limited";
   return status;
 }
 
@@ -200,9 +186,16 @@ function goalStatusLabel(status) {
 import { randomUUID } from "crypto";
 import { mkdir } from "fs/promises";
 import { join } from "path";
-var GOAL_STATUSES = new Set(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"]);
+var GOAL_STATUSES = new Set(["active", "paused", "budget_limited", "complete"]);
 function isGoalStatus(value) {
   return typeof value === "string" && GOAL_STATUSES.has(value);
+}
+function normalizeStatus(value) {
+  if (isGoalStatus(value))
+    return value;
+  if (value === "blocked" || value === "usage_limited")
+    return "paused";
+  return "active";
 }
 function normalizeGoal(raw) {
   const value = raw && typeof raw === "object" ? raw : {};
@@ -211,7 +204,7 @@ function normalizeGoal(raw) {
     sessionID: typeof value.sessionID === "string" ? value.sessionID : "",
     goalID: typeof value.goalID === "string" ? value.goalID : typeof value.goalId === "string" ? value.goalId : randomUUID(),
     objective: typeof value.objective === "string" ? value.objective : "",
-    status: isGoalStatus(value.status) ? value.status : "active",
+    status: normalizeStatus(value.status),
     tokenBudget: typeof value.tokenBudget === "number" && Number.isFinite(value.tokenBudget) ? value.tokenBudget : undefined,
     tokensUsed: typeof value.tokensUsed === "number" && Number.isFinite(value.tokensUsed) ? value.tokensUsed : 0,
     timeUsedSeconds: typeof value.timeUsedSeconds === "number" && Number.isFinite(value.timeUsedSeconds) ? value.timeUsedSeconds : 0,
@@ -286,11 +279,11 @@ async function updateGoalStatus(root, sessionID, status) {
   const goal = await readGoal(root, sessionID);
   if (!goal)
     return;
-  const resumingStoppedGoal = (goal.status === "blocked" || goal.status === "usage_limited") && status === "active";
+  const resumingPausedGoal = goal.status === "paused" && status === "active";
   return writeGoal(root, {
     ...goal,
     status,
-    continuationsUsed: resumingStoppedGoal ? 0 : goal.continuationsUsed,
+    continuationsUsed: resumingPausedGoal ? 0 : goal.continuationsUsed,
     budgetWrapPrompted: status === "active" ? false : goal.budgetWrapPrompted,
     lastTurnStartedAt: status === "active" ? goal.lastTurnStartedAt : undefined,
     lastTurnGoalID: status === "active" ? goal.lastTurnGoalID : undefined,
@@ -410,7 +403,7 @@ function GoalsServerPlugin(options = {}) {
         if (goal.status !== "active")
           return;
         if (goal.continuationsUsed >= mergedOptions.maxContinuations) {
-          await updateGoalStatus(root, sessionID, "usage_limited");
+          await updateGoalStatus(root, sessionID, "paused");
           return;
         }
         await recordContinuation(root, sessionID);
@@ -444,8 +437,8 @@ function GoalsServerPlugin(options = {}) {
           }
         }),
         update_goal: tool({
-          description: "Update the existing goal. Use this tool only to mark the goal achieved or genuinely blocked. Set status to complete only when the objective has actually been achieved and no required work remains. Set status to blocked only when the same blocking condition has repeated for at least three consecutive goal turns, counting the original/user-triggered turn and any automatic continuations, and the agent cannot make meaningful progress without user input or an external-state change. If the user resumes a goal that was previously marked blocked, treat the resumed run as a fresh blocked audit. If the same blocking condition then repeats for at least three consecutive resumed goal turns, set status to blocked again. Once the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal active; set status to blocked. Do not use blocked merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification. Do not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work. You cannot use this tool to pause, resume, budget-limit, or usage-limit a goal; those status changes are controlled by the user or system. When marking a budgeted goal achieved with status complete, report the final token usage from the tool result to the user.",
-          args: { status: schema.enum(["complete", "blocked"]) },
+          description: "Update the existing goal. Use this tool only to mark the goal achieved. Set status to complete only when the objective has actually been achieved and no required work remains. Do not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work. You cannot use this tool to pause, resume, or budget-limit a goal; those status changes are controlled by the user or system. When marking a budgeted goal achieved with status complete, report the final token usage from the tool result to the user.",
+          args: { status: schema.enum(["complete"]) },
           async execute(args, context) {
             const storeRoot = context.worktree || context.directory || root;
             await accountElapsed(storeRoot, context.sessionID);
