@@ -1,10 +1,7 @@
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui";
-import type { Accessor } from "solid-js";
-import { createSignal, Show } from "solid-js";
 import { parseGoalCommand, validateObjective } from "./command.js";
-import { formatGoalStatus, formatGoalSummary } from "./prompts.js";
+import { formatGoalSummary } from "./prompts.js";
 import { createGoal, deleteGoal, readGoal, replaceGoal, updateGoalObjective, updateGoalStatus } from "./store.js";
-import type { GoalState } from "./types.js";
 
 function getRouteSessionID(api: TuiPluginApi): string | undefined {
 	const sessionID = api.route.current.name === "session" ? api.route.current.params?.sessionID : undefined;
@@ -102,14 +99,6 @@ async function runGoalCommand(api: TuiPluginApi, root: string, args: string, act
 	else api.ui.toast({ message: "No goal to clear", variant: "info" });
 }
 
-function GoalPromptStatus(props: { goal: Accessor<GoalState | undefined>; api: TuiPluginApi }) {
-	return (
-		<Show when={props.goal()}>
-			<text fg={props.api.theme.current.textMuted}>{props.goal() ? formatGoalStatus(props.goal()!) : ""}</text>
-		</Show>
-	);
-}
-
 function readSessionID(properties: unknown): string | undefined {
 	const record = properties && typeof properties === "object" ? (properties as Record<string, unknown>) : undefined;
 	const sessionID = record?.sessionID ?? record?.sessionId ?? record?.session_id;
@@ -118,13 +107,10 @@ function readSessionID(properties: unknown): string | undefined {
 
 export async function installGoalsPlugin(api: TuiPluginApi): Promise<void> {
 	const root = api.state.path.directory || process.cwd();
-	const [goal, setGoalState] = createSignal<GoalState | undefined>();
 	let activeSessionID: string | undefined;
-	const refresh = async (sessionID?: string) => setGoalState(sessionID ? await readGoal(root, sessionID) : undefined);
 	const setActiveSession = (sessionID?: string) => {
 		if (!sessionID) return;
 		activeSessionID = sessionID;
-		void refresh(sessionID);
 	};
 
 	api.command.register(() => [
@@ -143,7 +129,6 @@ export async function installGoalsPlugin(api: TuiPluginApi): Promise<void> {
 						onConfirm={async (value) => {
 							api.ui.dialog.clear();
 							await runGoalCommand(api, root, value, commandSessionID);
-							await refresh(commandSessionID);
 						}}
 					/>
 				));
@@ -156,7 +141,7 @@ export async function installGoalsPlugin(api: TuiPluginApi): Promise<void> {
 		slots: {
 			session_prompt_right(_, props) {
 				setActiveSession(props.session_id);
-				return <GoalPromptStatus api={api} goal={goal} />;
+				return null;
 			},
 		},
 	});

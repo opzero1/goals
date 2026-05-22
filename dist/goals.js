@@ -1,6 +1,9 @@
 // @bun
 // src/server.ts
 import { tool } from "@opencode-ai/plugin";
+import { mkdir as mkdir2 } from "fs/promises";
+import { homedir } from "os";
+import { join as join2, resolve } from "path";
 
 // src/command.ts
 function parseTokenBudget(value) {
@@ -166,15 +169,6 @@ function formatGoalSummary(goal) {
     lines.push("", "Commands: /goal edit, /goal clear");
   return lines.join(`
 `);
-}
-function formatGoalStatus(goal) {
-  if (goal.status === "paused")
-    return "Goal paused";
-  if (goal.status === "budget_limited")
-    return "Goal budget limited";
-  if (goal.status === "complete")
-    return "Goal complete";
-  return goal.tokenBudget ? `Goal ${goal.tokensUsed}/${goal.tokenBudget}` : "Goal active";
 }
 function goalStatusLabel(status) {
   if (status === "budget_limited")
@@ -348,6 +342,22 @@ var DEFAULT_GOAL_OPTIONS = {
 
 // src/server.ts
 var schema = tool.schema;
+var fallbackRoot = join2(homedir(), ".local", "share", "opencode", "goals-plugin");
+async function resolveStoreRoot(...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate)
+      continue;
+    const root = resolve(candidate);
+    if (root === "/")
+      continue;
+    try {
+      await mkdir2(join2(root, ".opencode"), { recursive: true });
+      return root;
+    } catch {}
+  }
+  await mkdir2(fallbackRoot, { recursive: true });
+  return fallbackRoot;
+}
 function readSessionID(value) {
   const record = value && typeof value === "object" ? value : undefined;
   if (!record)
@@ -383,7 +393,7 @@ async function promptAsync(client, sessionID, text) {
 }
 function GoalsServerPlugin(options = {}) {
   return async (input) => {
-    const root = input.worktree || input.directory;
+    const root = await resolveStoreRoot(input.worktree, input.directory);
     const mergedOptions = { ...DEFAULT_GOAL_OPTIONS, ...options };
     const pending = new Map;
     const turnGoalIDs = new Map;
@@ -416,7 +426,7 @@ function GoalsServerPlugin(options = {}) {
           description: "Get the current goal for this thread, including status, budgets, token and elapsed-time usage, and remaining token budget.",
           args: {},
           async execute(_, context) {
-            const goal = await readGoal(context.worktree || context.directory || root, context.sessionID);
+            const goal = await readGoal(await resolveStoreRoot(context.worktree, context.directory, root), context.sessionID);
             return goalToolResponse(goal);
           }
         }),
@@ -427,7 +437,7 @@ function GoalsServerPlugin(options = {}) {
             token_budget: schema.number().int().positive().optional()
           },
           async execute(args, context) {
-            const storeRoot = context.worktree || context.directory || root;
+            const storeRoot = await resolveStoreRoot(context.worktree, context.directory, root);
             if (await readGoal(storeRoot, context.sessionID))
               return "cannot create a new goal because this thread already has a goal; use update_goal only when the existing goal is complete";
             const error = validateObjective(args.objective);
@@ -440,7 +450,7 @@ function GoalsServerPlugin(options = {}) {
           description: "Update the existing goal. Use this tool only to mark the goal achieved. Set status to complete only when the objective has actually been achieved and no required work remains. Do not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work. You cannot use this tool to pause, resume, or budget-limit a goal; those status changes are controlled by the user or system. When marking a budgeted goal achieved with status complete, report the final token usage from the tool result to the user.",
           args: { status: schema.enum(["complete"]) },
           async execute(args, context) {
-            const storeRoot = context.worktree || context.directory || root;
+            const storeRoot = await resolveStoreRoot(context.worktree, context.directory, root);
             await accountElapsed(storeRoot, context.sessionID);
             const goal = await updateGoalStatus(storeRoot, context.sessionID, args.status);
             return goal ? goalToolResponse(goal, args.status === "complete") : goalToolResponse(undefined);
@@ -480,13 +490,7 @@ function GoalsServerPlugin(options = {}) {
 }
 
 // src/tui.tsx
-import { setProp as _$setProp } from "@opentui/solid";
-import { effect as _$effect } from "@opentui/solid";
-import { insert as _$insert } from "@opentui/solid";
-import { memo as _$memo } from "@opentui/solid";
-import { createElement as _$createElement } from "@opentui/solid";
 import { createComponent as _$createComponent } from "@opentui/solid";
-import { createSignal, Show } from "solid-js";
 function getRouteSessionID(api) {
   const sessionID = api.route.current.name === "session" ? api.route.current.params?.sessionID : undefined;
   return typeof sessionID === "string" ? sessionID : undefined;
@@ -629,22 +633,6 @@ async function runGoalCommand(api, root, args, activeSessionID) {
       variant: "info"
     });
 }
-function GoalPromptStatus(props) {
-  return _$createComponent(Show, {
-    get when() {
-      return props.goal();
-    },
-    get children() {
-      var _el$ = _$createElement("text");
-      _$insert(_el$, (() => {
-        var _c$ = _$memo(() => !!props.goal());
-        return () => _c$() ? formatGoalStatus(props.goal()) : "";
-      })());
-      _$effect((_$p) => _$setProp(_el$, "fg", props.api.theme.current.textMuted, _$p));
-      return _el$;
-    }
-  });
-}
 function readSessionID2(properties) {
   const record = properties && typeof properties === "object" ? properties : undefined;
   const sessionID = record?.sessionID ?? record?.sessionId ?? record?.session_id;
@@ -652,14 +640,11 @@ function readSessionID2(properties) {
 }
 async function installGoalsPlugin(api) {
   const root = api.state.path.directory || process.cwd();
-  const [goal, setGoalState] = createSignal();
   let activeSessionID;
-  const refresh = async (sessionID) => setGoalState(sessionID ? await readGoal(root, sessionID) : undefined);
   const setActiveSession = (sessionID) => {
     if (!sessionID)
       return;
     activeSessionID = sessionID;
-    refresh(sessionID);
   };
   api.command.register(() => [{
     title: "Goal",
@@ -677,7 +662,6 @@ async function installGoalsPlugin(api) {
         onConfirm: async (value) => {
           api.ui.dialog.clear();
           await runGoalCommand(api, root, value, commandSessionID);
-          await refresh(commandSessionID);
         }
       }));
     }
@@ -687,10 +671,7 @@ async function installGoalsPlugin(api) {
     slots: {
       session_prompt_right(_, props) {
         setActiveSession(props.session_id);
-        return _$createComponent(GoalPromptStatus, {
-          api,
-          goal
-        });
+        return null;
       }
     }
   });
