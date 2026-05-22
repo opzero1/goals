@@ -16,10 +16,19 @@ function readSessionID(value: unknown): string | undefined {
 
 function readStepUsage(value: unknown) {
 	const record = value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-	const tokens = record?.tokens && typeof record.tokens === "object" ? (record.tokens as Record<string, unknown>) : undefined;
-	const input = typeof tokens?.input === "number" ? tokens.input : 0;
-	const output = typeof tokens?.output === "number" ? tokens.output : 0;
+	const source = record?.info && typeof record.info === "object" ? (record.info as Record<string, unknown>) : record;
+	const tokens = source?.tokens && typeof source.tokens === "object" ? (source.tokens as Record<string, unknown>) : undefined;
+	const input = readNumber(tokens, "input", "inputTokens", "input_tokens");
+	const output = readNumber(tokens, "output", "outputTokens", "output_tokens");
 	return { input, output };
+}
+
+function readNumber(record: Record<string, unknown> | undefined, ...keys: string[]): number {
+	for (const key of keys) {
+		const value = record?.[key];
+		if (typeof value === "number" && Number.isFinite(value)) return value;
+	}
+	return 0;
 }
 
 function isIdleStatus(value: unknown): boolean {
@@ -40,6 +49,7 @@ export function GoalsServerPlugin(options: Partial<GoalOptions> = {}): Plugin {
 		const root = input.worktree || input.directory;
 		const mergedOptions = { ...DEFAULT_GOAL_OPTIONS, ...options };
 		const pending = new Map<string, Timer>();
+		const turnGoalIDs = new Map<string, string>();
 
 		async function scheduleContinuation(sessionID: string) {
 			if (pending.has(sessionID)) return;
@@ -55,7 +65,10 @@ export function GoalsServerPlugin(options: Partial<GoalOptions> = {}): Plugin {
 						return;
 					}
 					if (goal.status !== "active") return;
-					if (goal.continuationsUsed >= mergedOptions.maxContinuations) return;
+					if (goal.continuationsUsed >= mergedOptions.maxContinuations) {
+						await updateGoalStatus(root, sessionID, "usage_limited");
+						return;
+					}
 					await recordContinuation(root, sessionID);
 					await promptAsync(input.client as Client, sessionID, buildContinuationPrompt(goal));
 				}, mergedOptions.idleDelayMs),
@@ -89,13 +102,13 @@ export function GoalsServerPlugin(options: Partial<GoalOptions> = {}): Plugin {
 				}),
 				update_goal: tool({
 					description:
-						"Update the existing goal. Use this tool only to mark the goal achieved. Set status to complete only when the objective has actually been achieved and no required work remains. Do not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work. You cannot use this tool to pause, resume, or budget-limit a goal; those status changes are controlled by the user or system. When marking a budgeted goal achieved with status complete, report the final token usage from the tool result to the user.",
-					args: { status: schema.literal("complete") },
-					async execute(_, context) {
+						"Update the existing goal. Use this tool only to mark the goal achieved or genuinely blocked. Set status to complete only when the objective has actually been achieved and no required work remains. Set status to blocked only when the same blocking condition has repeated for at least three consecutive goal turns, counting the original/user-triggered turn and any automatic continuations, and the agent cannot make meaningful progress without user input or an external-state change. If the user resumes a goal that was previously marked blocked, treat the resumed run as a fresh blocked audit. If the same blocking condition then repeats for at least three consecutive resumed goal turns, set status to blocked again. Once the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal active; set status to blocked. Do not use blocked merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification. Do not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work. You cannot use this tool to pause, resume, budget-limit, or usage-limit a goal; those status changes are controlled by the user or system. When marking a budgeted goal achieved with status complete, report the final token usage from the tool result to the user.",
+					args: { status: schema.enum(["complete", "blocked"]) },
+					async execute(args, context) {
 						const storeRoot = context.worktree || context.directory || root;
 						await accountElapsed(storeRoot, context.sessionID);
-						const goal = await updateGoalStatus(storeRoot, context.sessionID, "complete");
-						return goal ? goalToolResponse(goal, true) : goalToolResponse(undefined);
+						const goal = await updateGoalStatus(storeRoot, context.sessionID, args.status);
+						return goal ? goalToolResponse(goal, args.status === "complete") : goalToolResponse(undefined);
 					},
 				}),
 			},
@@ -103,8 +116,16 @@ export function GoalsServerPlugin(options: Partial<GoalOptions> = {}): Plugin {
 				const event = eventInput.event as { type?: string; properties?: unknown };
 				const sessionID = readSessionID(event.properties);
 				if (!sessionID) return;
-				if (event.type === "session.next.step.started") await markTurnStarted(root, sessionID);
-				if (event.type === "session.next.step.ended") await accountUsage(root, sessionID, readStepUsage(event.properties));
+				if (event.type === "session.next.step.started") {
+					const goal = await markTurnStarted(root, sessionID);
+					if (goal?.status === "active") turnGoalIDs.set(sessionID, goal.goalID);
+					else turnGoalIDs.delete(sessionID);
+				}
+				if (event.type === "session.next.step.ended") {
+					const expectedGoalID = turnGoalIDs.get(sessionID);
+					turnGoalIDs.delete(sessionID);
+					await accountUsage(root, sessionID, readStepUsage(event.properties), expectedGoalID);
+				}
 				if ((event.type === "session.status" || event.type === "session.idle") && isIdleStatus(event.properties)) await scheduleContinuation(sessionID);
 			},
 			async "experimental.chat.system.transform"(hookInput, output) {

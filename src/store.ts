@@ -1,6 +1,33 @@
+import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { GoalState, GoalStatus, StepUsage } from "./types.js";
+
+const GOAL_STATUSES = new Set<GoalStatus>(["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"]);
+
+function isGoalStatus(value: unknown): value is GoalStatus {
+	return typeof value === "string" && GOAL_STATUSES.has(value as GoalStatus);
+}
+
+function normalizeGoal(raw: unknown): GoalState {
+	const value = raw && typeof raw === "object" ? (raw as Partial<GoalState> & Record<string, unknown>) : {};
+	const now = new Date().toISOString();
+	return {
+		sessionID: typeof value.sessionID === "string" ? value.sessionID : "",
+		goalID: typeof value.goalID === "string" ? value.goalID : typeof value.goalId === "string" ? value.goalId : randomUUID(),
+		objective: typeof value.objective === "string" ? value.objective : "",
+		status: isGoalStatus(value.status) ? value.status : "active",
+		tokenBudget: typeof value.tokenBudget === "number" && Number.isFinite(value.tokenBudget) ? value.tokenBudget : undefined,
+		tokensUsed: typeof value.tokensUsed === "number" && Number.isFinite(value.tokensUsed) ? value.tokensUsed : 0,
+		timeUsedSeconds: typeof value.timeUsedSeconds === "number" && Number.isFinite(value.timeUsedSeconds) ? value.timeUsedSeconds : 0,
+		continuationsUsed: typeof value.continuationsUsed === "number" && Number.isFinite(value.continuationsUsed) ? value.continuationsUsed : 0,
+		budgetWrapPrompted: value.budgetWrapPrompted === true,
+		createdAt: typeof value.createdAt === "string" ? value.createdAt : now,
+		updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : now,
+		lastTurnStartedAt: typeof value.lastTurnStartedAt === "string" ? value.lastTurnStartedAt : undefined,
+		lastTurnGoalID: typeof value.lastTurnGoalID === "string" ? value.lastTurnGoalID : undefined,
+	};
+}
 
 function safeSessionID(sessionID: string): string {
 	return sessionID.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -17,7 +44,7 @@ export function goalPath(root: string, sessionID: string): string {
 export async function readGoal(root: string, sessionID: string): Promise<GoalState | undefined> {
 	const file = Bun.file(goalPath(root, sessionID));
 	if (!(await file.exists())) return undefined;
-	return (await file.json()) as GoalState;
+	return normalizeGoal(await file.json());
 }
 
 export async function writeGoal(root: string, goal: GoalState): Promise<GoalState> {
@@ -37,6 +64,7 @@ export async function createGoal(root: string, input: { sessionID: string; objec
 	const now = new Date().toISOString();
 	return writeGoal(root, {
 		sessionID: input.sessionID,
+		goalID: randomUUID(),
 		objective: input.objective.trim(),
 		status: "active",
 		tokenBudget: input.tokenBudget,
@@ -68,25 +96,38 @@ export async function updateGoalObjective(root: string, input: { sessionID: stri
 export async function updateGoalStatus(root: string, sessionID: string, status: GoalStatus): Promise<GoalState | undefined> {
 	const goal = await readGoal(root, sessionID);
 	if (!goal) return undefined;
-	return writeGoal(root, { ...goal, status, updatedAt: new Date().toISOString() });
-}
-
-export async function accountUsage(root: string, sessionID: string, usage: StepUsage): Promise<GoalState | undefined> {
-	const goal = await readGoal(root, sessionID);
-	if (!goal || goal.status !== "active") return goal;
-	const tokensUsed = goal.tokensUsed + usage.input + usage.output;
+	const resumingStoppedGoal = (goal.status === "blocked" || goal.status === "usage_limited") && status === "active";
 	return writeGoal(root, {
 		...goal,
-		tokensUsed,
-		status: goal.tokenBudget && tokensUsed >= goal.tokenBudget ? "budget_limited" : goal.status,
+		status,
+		continuationsUsed: resumingStoppedGoal ? 0 : goal.continuationsUsed,
+		budgetWrapPrompted: status === "active" ? false : goal.budgetWrapPrompted,
+		lastTurnStartedAt: status === "active" ? goal.lastTurnStartedAt : undefined,
+		lastTurnGoalID: status === "active" ? goal.lastTurnGoalID : undefined,
 		updatedAt: new Date().toISOString(),
 	});
 }
 
-export async function markTurnStarted(root: string, sessionID: string): Promise<void> {
+export async function accountUsage(root: string, sessionID: string, usage: StepUsage, expectedGoalID?: string): Promise<GoalState | undefined> {
 	const goal = await readGoal(root, sessionID);
-	if (!goal || goal.status !== "active") return;
-	await writeGoal(root, { ...goal, lastTurnStartedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+	if (!goal || goal.status !== "active") return goal;
+	if (expectedGoalID && goal.goalID !== expectedGoalID) return goal;
+	if (goal.lastTurnGoalID && goal.lastTurnGoalID !== goal.goalID) return goal;
+	const tokenDelta = usage.input + usage.output;
+	const tokensUsed = goal.tokensUsed + tokenDelta;
+	return writeGoal(root, {
+		...goal,
+		tokensUsed,
+		status: goal.tokenBudget && tokensUsed >= goal.tokenBudget ? "budget_limited" : goal.status,
+		lastTurnGoalID: undefined,
+		updatedAt: new Date().toISOString(),
+	});
+}
+
+export async function markTurnStarted(root: string, sessionID: string): Promise<GoalState | undefined> {
+	const goal = await readGoal(root, sessionID);
+	if (!goal || goal.status !== "active") return goal;
+	return writeGoal(root, { ...goal, lastTurnStartedAt: new Date().toISOString(), lastTurnGoalID: goal.goalID, updatedAt: new Date().toISOString() });
 }
 
 export async function accountElapsed(root: string, sessionID: string): Promise<GoalState | undefined> {
@@ -97,6 +138,7 @@ export async function accountElapsed(root: string, sessionID: string): Promise<G
 		...goal,
 		timeUsedSeconds: goal.timeUsedSeconds + elapsed,
 		lastTurnStartedAt: undefined,
+		lastTurnGoalID: undefined,
 		updatedAt: new Date().toISOString(),
 	});
 }

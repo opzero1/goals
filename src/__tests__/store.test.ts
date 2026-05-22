@@ -11,7 +11,9 @@ describe("goal store", () => {
 	test("creates, reads, updates, and deletes project-local goals", async () => {
 		const root = await tempRoot();
 		await createGoal(root, { sessionID: "session/1", objective: "ship goals" });
-		expect((await readGoal(root, "session/1"))?.objective).toBe("ship goals");
+		const created = await readGoal(root, "session/1");
+		expect(created?.objective).toBe("ship goals");
+		expect(typeof created?.goalID).toBe("string");
 		expect((await updateGoalStatus(root, "session/1", "paused"))?.status).toBe("paused");
 		expect(await deleteGoal(root, "session/1")).toBe(true);
 		expect(await readGoal(root, "session/1")).toBeUndefined();
@@ -24,6 +26,29 @@ describe("goal store", () => {
 		const goal = await accountUsage(root, "s1", { input: 20, output: 10 });
 		expect(goal?.tokensUsed).toBe(100);
 		expect(goal?.status).toBe("budget_limited");
+	});
+
+	test("accounts OpenCode input and output tokens directly", async () => {
+		const root = await tempRoot();
+		await createGoal(root, { sessionID: "s1", objective: "ship goals", tokenBudget: 100 });
+		const goal = await accountUsage(root, "s1", { input: 40, output: 10 });
+		expect(goal?.tokensUsed).toBe(50);
+		expect(goal?.status).toBe("active");
+	});
+
+	test("supports stopped statuses from Codex goal lifecycle", async () => {
+		const root = await tempRoot();
+		await createGoal(root, { sessionID: "s1", objective: "ship goals" });
+		expect((await updateGoalStatus(root, "s1", "blocked"))?.status).toBe("blocked");
+		await recordContinuation(root, "s1");
+		const resumedBlocked = await updateGoalStatus(root, "s1", "active");
+		expect(resumedBlocked?.status).toBe("active");
+		expect(resumedBlocked?.continuationsUsed).toBe(0);
+		await recordContinuation(root, "s1");
+		expect((await updateGoalStatus(root, "s1", "usage_limited"))?.status).toBe("usage_limited");
+		const resumed = await updateGoalStatus(root, "s1", "active");
+		expect(resumed?.status).toBe("active");
+		expect(resumed?.continuationsUsed).toBe(0);
 	});
 
 	test("records continuation counts", async () => {

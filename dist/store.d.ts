@@ -14,9 +14,15 @@ export declare function replaceGoal(root: string, input: {
     objective: string;
     tokenBudget?: number;
 }): Promise<GoalState>;
+export declare function updateGoalObjective(root: string, input: {
+    sessionID: string;
+    objective: string;
+    status?: GoalStatus;
+    tokenBudget?: number;
+}): Promise<GoalState | undefined>;
 export declare function updateGoalStatus(root: string, sessionID: string, status: GoalStatus): Promise<GoalState | undefined>;
-export declare function accountUsage(root: string, sessionID: string, usage: StepUsage): Promise<GoalState | undefined>;
-export declare function markTurnStarted(root: string, sessionID: string): Promise<void>;
+export declare function accountUsage(root: string, sessionID: string, usage: StepUsage, expectedGoalID?: string): Promise<GoalState | undefined>;
+export declare function markTurnStarted(root: string, sessionID: string): Promise<GoalState | undefined>;
 export declare function accountElapsed(root: string, sessionID: string): Promise<GoalState | undefined>;
 export declare function recordContinuation(root: string, sessionID: string): Promise<GoalState | undefined>;
 export declare function markBudgetWrapPrompted(root: string, sessionID: string): Promise<GoalState | undefined>;

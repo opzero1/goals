@@ -1,7 +1,8 @@
-export type GoalStatus = "active" | "paused" | "budget_limited" | "complete";
+export type GoalStatus = "active" | "paused" | "blocked" | "usage_limited" | "budget_limited" | "complete";
 
 export interface GoalState {
 	sessionID: string;
+	goalID: string;
 	objective: string;
 	status: GoalStatus;
 	tokenBudget?: number;
@@ -12,6 +13,7 @@ export interface GoalState {
 	createdAt: string;
 	updatedAt: string;
 	lastTurnStartedAt?: string;
+	lastTurnGoalID?: string;
 }
 
 export interface GoalOptions {
