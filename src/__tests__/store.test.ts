@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { accountUsage, createGoal, deleteGoal, readGoal, recordContinuation, updateGoalStatus } from "../store.js";
+import { accountUsage, createGoal, deleteGoal, readGoal, recordContinuation, updateGoalObjective, updateGoalStatus } from "../store.js";
 
 async function tempRoot() {
 	return mkdtemp(join(import.meta.dir, "tmp-"));
@@ -30,5 +30,15 @@ describe("goal store", () => {
 		const root = await tempRoot();
 		await createGoal(root, { sessionID: "s1", objective: "ship goals" });
 		expect((await recordContinuation(root, "s1"))?.continuationsUsed).toBe(1);
+	});
+
+	test("edits objective while preserving accounting", async () => {
+		const root = await tempRoot();
+		await createGoal(root, { sessionID: "s1", objective: "ship goals", tokenBudget: 100 });
+		await accountUsage(root, "s1", { input: 30, output: 20 });
+		const goal = await updateGoalObjective(root, { sessionID: "s1", objective: "ship more goals", status: "active", tokenBudget: 100 });
+		expect(goal?.objective).toBe("ship more goals");
+		expect(goal?.tokensUsed).toBe(50);
+		expect(goal?.tokenBudget).toBe(100);
 	});
 });

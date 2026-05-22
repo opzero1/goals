@@ -53,6 +53,18 @@ export async function replaceGoal(root: string, input: { sessionID: string; obje
 	return createGoal(root, input);
 }
 
+export async function updateGoalObjective(root: string, input: { sessionID: string; objective: string; status?: GoalStatus; tokenBudget?: number }): Promise<GoalState | undefined> {
+	const goal = await readGoal(root, input.sessionID);
+	if (!goal) return undefined;
+	return writeGoal(root, {
+		...goal,
+		objective: input.objective.trim(),
+		status: input.status ?? goal.status,
+		tokenBudget: input.tokenBudget,
+		updatedAt: new Date().toISOString(),
+	});
+}
+
 export async function updateGoalStatus(root: string, sessionID: string, status: GoalStatus): Promise<GoalState | undefined> {
 	const goal = await readGoal(root, sessionID);
 	if (!goal) return undefined;

@@ -12,17 +12,12 @@ export function parseTokenBudget(value: string): number | undefined {
 export function parseGoalCommand(input: string): ParsedGoalCommand {
 	const trimmed = input.trim();
 	if (!trimmed) return { action: "show" };
-	if (trimmed === "clear") return { action: "clear" };
-	if (trimmed === "pause") return { action: "pause" };
-	if (trimmed === "resume") return { action: "resume" };
-
-	const parts = trimmed.split(/\s+/);
-	if (parts[0] !== "--tokens") return { action: "set", objective: trimmed };
-
-	const tokenBudget = parts[1] ? parseTokenBudget(parts[1]) : undefined;
-	const objective = parts.slice(2).join(" ").trim();
-	if (!tokenBudget || !objective) return { action: "set", objective: trimmed };
-	return { action: "set", objective, tokenBudget };
+	const command = trimmed.toLowerCase();
+	if (command === "clear") return { action: "clear" };
+	if (command === "edit") return { action: "edit" };
+	if (command === "pause") return { action: "pause" };
+	if (command === "resume") return { action: "resume" };
+	return { action: "set", objective: trimmed };
 }
 
 export function validateObjective(objective: string): string | undefined {

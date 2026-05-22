@@ -1,7 +1,7 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { validateObjective } from "./command.js";
-import { buildBudgetLimitPrompt, buildContinuationPrompt, buildGoalSystemPrompt, formatGoalSummary } from "./prompts.js";
+import { buildBudgetLimitPrompt, buildContinuationPrompt, buildGoalSystemPrompt, goalToolResponse } from "./prompts.js";
 import { accountElapsed, accountUsage, createGoal, markBudgetWrapPrompted, markTurnStarted, readGoal, recordContinuation, updateGoalStatus } from "./store.js";
 import { DEFAULT_GOAL_OPTIONS, type GoalOptions } from "./types.js";
 
@@ -65,33 +65,37 @@ export function GoalsServerPlugin(options: Partial<GoalOptions> = {}): Plugin {
 		return {
 			tool: {
 				get_goal: tool({
-					description: "Read the active goal for this OpenCode session, including status, token use, and budget.",
+					description: "Get the current goal for this thread, including status, budgets, token and elapsed-time usage, and remaining token budget.",
 					args: {},
 					async execute(_, context) {
 						const goal = await readGoal(context.worktree || context.directory || root, context.sessionID);
-						return goal ? formatGoalSummary(goal) : "No goal is currently set.";
+						return goalToolResponse(goal);
 					},
 				}),
 				create_goal: tool({
-					description: "Create a goal only when explicitly requested by the user or higher-priority instructions. Fails if a goal already exists.",
+					description:
+						"Create a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks. Set token_budget only when an explicit token budget is requested. Fails if a goal exists; use update_goal only for status.",
 					args: {
 						objective: schema.string().min(1).max(4000),
 						token_budget: schema.number().int().positive().optional(),
 					},
 					async execute(args, context) {
 						const storeRoot = context.worktree || context.directory || root;
-						if (await readGoal(storeRoot, context.sessionID)) return "A goal already exists. Ask the user to replace or clear it with /goal.";
+						if (await readGoal(storeRoot, context.sessionID)) return "cannot create a new goal because this thread already has a goal; use update_goal only when the existing goal is complete";
 						const error = validateObjective(args.objective);
 						if (error) return error;
-						return formatGoalSummary(await createGoal(storeRoot, { sessionID: context.sessionID, objective: args.objective, tokenBudget: args.token_budget }));
+						return goalToolResponse(await createGoal(storeRoot, { sessionID: context.sessionID, objective: args.objective, tokenBudget: args.token_budget }));
 					},
 				}),
 				update_goal: tool({
-					description: "Mark the current goal complete only after auditing that the objective has actually been achieved.",
+					description:
+						"Update the existing goal. Use this tool only to mark the goal achieved. Set status to complete only when the objective has actually been achieved and no required work remains. Do not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work. You cannot use this tool to pause, resume, or budget-limit a goal; those status changes are controlled by the user or system. When marking a budgeted goal achieved with status complete, report the final token usage from the tool result to the user.",
 					args: { status: schema.literal("complete") },
 					async execute(_, context) {
-						const goal = await updateGoalStatus(context.worktree || context.directory || root, context.sessionID, "complete");
-						return goal ? formatGoalSummary(goal) : "No goal is currently set.";
+						const storeRoot = context.worktree || context.directory || root;
+						await accountElapsed(storeRoot, context.sessionID);
+						const goal = await updateGoalStatus(storeRoot, context.sessionID, "complete");
+						return goal ? goalToolResponse(goal, true) : goalToolResponse(undefined);
 					},
 				}),
 			},

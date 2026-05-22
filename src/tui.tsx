@@ -3,7 +3,7 @@ import type { Accessor } from "solid-js";
 import { createSignal, Show } from "solid-js";
 import { parseGoalCommand, validateObjective } from "./command.js";
 import { formatGoalStatus, formatGoalSummary } from "./prompts.js";
-import { createGoal, deleteGoal, readGoal, replaceGoal, updateGoalStatus } from "./store.js";
+import { createGoal, deleteGoal, readGoal, replaceGoal, updateGoalObjective, updateGoalStatus } from "./store.js";
 import type { GoalState } from "./types.js";
 
 function getSessionID(api: TuiPluginApi): string | undefined {
@@ -41,6 +41,35 @@ async function setGoal(api: TuiPluginApi, root: string, sessionID: string, objec
 	api.ui.toast({ message: "Goal set", variant: "success" });
 }
 
+async function editGoal(api: TuiPluginApi, root: string, sessionID: string) {
+	const goal = await readGoal(root, sessionID);
+	if (!goal) {
+		api.ui.toast({ message: "No goal to edit", variant: "info" });
+		return;
+	}
+	api.ui.dialog.replace(() => (
+		<api.ui.DialogPrompt
+			title="Edit goal"
+			placeholder="Type a goal objective and press Enter"
+			onConfirm={async (value) => {
+				api.ui.dialog.clear();
+				const error = validateObjective(value);
+				if (error) {
+					api.ui.toast({ message: error, variant: "error" });
+					return;
+				}
+				await updateGoalObjective(root, {
+					sessionID,
+					objective: value,
+					status: goal.status === "budget_limited" || goal.status === "complete" ? "active" : goal.status,
+					tokenBudget: goal.tokenBudget,
+				});
+				api.ui.toast({ message: "Goal updated", variant: "success" });
+			}}
+		/>
+	));
+}
+
 async function runGoalCommand(api: TuiPluginApi, root: string, args: string) {
 	const sessionID = getSessionID(api);
 	if (!sessionID) {
@@ -49,14 +78,23 @@ async function runGoalCommand(api: TuiPluginApi, root: string, args: string) {
 	}
 	const command = parseGoalCommand(args);
 	if (command.action === "show") return showGoal(api, root, sessionID);
+	if (command.action === "edit") return editGoal(api, root, sessionID);
 	if (command.action === "set") return setGoal(api, root, sessionID, command.objective ?? "", command.tokenBudget);
 	if (command.action === "pause") {
-		await updateGoalStatus(root, sessionID, "paused");
+		const goal = await updateGoalStatus(root, sessionID, "paused");
+		if (!goal) {
+			api.ui.toast({ message: "No goal to pause", variant: "info" });
+			return;
+		}
 		api.ui.toast({ message: "Goal paused", variant: "info" });
 		return;
 	}
 	if (command.action === "resume") {
-		await updateGoalStatus(root, sessionID, "active");
+		const goal = await updateGoalStatus(root, sessionID, "active");
+		if (!goal) {
+			api.ui.toast({ message: "No goal to resume", variant: "info" });
+			return;
+		}
 		api.ui.toast({ message: "Goal resumed", variant: "success" });
 		return;
 	}

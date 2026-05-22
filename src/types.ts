@@ -25,7 +25,7 @@ export const DEFAULT_GOAL_OPTIONS: GoalOptions = {
 };
 
 export interface ParsedGoalCommand {
-	action: "show" | "set" | "pause" | "resume" | "clear";
+	action: "show" | "set" | "edit" | "pause" | "resume" | "clear";
 	objective?: string;
 	tokenBudget?: number;
 }
