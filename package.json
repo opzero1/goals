@@ -7,25 +7,34 @@
 	"types": "dist/index.d.ts",
 	"exports": {
 		".": {
-			"import": "./dist/goals.js",
-			"types": "./dist/index.d.ts"
+			"types": "./dist/index.d.ts",
+			"import": "./dist/goals.js"
+		},
+		"./server": {
+			"types": "./dist/server.entry.d.ts",
+			"import": "./dist/server.js"
+		},
+		"./tui": {
+			"types": "./dist/tui.entry.d.ts",
+			"import": "./dist/tui.js"
 		}
 	},
 	"scripts": {
-		"build": "bun run scripts/build.mjs && tsc --emitDeclarationOnly --declaration --declarationMap false --outDir dist",
+		"build": "bun run scripts/build.mjs && tsc -p tsconfig.build.json --emitDeclarationOnly --declarationMap false",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test",
-		"dev": "bun run build --watch"
+		"dev": "bun run scripts/dev-sandbox.ts"
 	},
 	"files": ["dist"],
 	"dependencies": {
-		"@opencode-ai/plugin": "^1.0.0",
+		"@opencode-ai/plugin": "^1.17.0",
 		"solid-js": "^1.9.0",
 		"zod": "4.1.8"
 	},
 	"devDependencies": {
-		"@opentui/core": "0.2.2",
-		"@opentui/solid": "0.2.2",
+		"@opentui/core": "0.3.4",
+		"@opentui/keymap": "0.3.4",
+		"@opentui/solid": "0.3.4",
 		"@types/bun": "^1.1.0",
 		"typescript": "^5.7.0"
 	},

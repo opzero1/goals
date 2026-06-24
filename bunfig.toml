@@ -1,0 +1,7 @@
+# Register the solid JSX transform for bun test / bun run in this repo so
+# .tsx modules (src/tui.tsx, dev/tui.tsx) can be imported directly in tests.
+# OpenCode's TUI host registers the same transform itself at runtime.
+preload = ["@opentui/solid/preload"]
+
+[test]
+preload = ["@opentui/solid/preload"]

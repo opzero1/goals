@@ -1,4 +1,6 @@
-export type GoalStatus = "active" | "paused" | "budget_limited" | "complete";
+export type GoalStatus = "active" | "paused" | "blocked" | "usage_limited" | "budget_limited" | "complete";
+/** Why the system stopped an active goal after a turn failure (codex on_turn_error parity). */
+export type GoalStopReason = "usage_limit" | "turn_error";
 export interface GoalState {
     sessionID: string;
     goalID: string;
@@ -25,6 +27,10 @@ export interface ParsedGoalCommand {
     tokenBudget?: number;
 }
 export interface StepUsage {
+    /** Non-cached input tokens. OpenCode step events already exclude cache reads/writes. */
     input: number;
+    /** Output tokens excluding reasoning (OpenCode reports reasoning separately). */
     output: number;
+    /** Reasoning tokens. Codex counts these inside output, so accounting adds them back. */
+    reasoning: number;
 }
